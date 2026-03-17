@@ -32,9 +32,9 @@ export default function SignInPage() {
           Notes of <span className="highlight-yellow">Tomorrow</span>
         </Link>
         <div className="flex items-center gap-3">
-          <button className="btn-black text-sm px-5 py-2">Sign In</button>
+          <button className="btn-primary text-sm px-5 py-2">Sign In</button>
           <Link href="/sign-up">
-            <button className="btn-ghost text-sm px-5 py-2">Sign Up</button>
+            <button className="btn-secondary text-sm px-5 py-2">Sign Up</button>
           </Link>
         </div>
       </nav>
@@ -123,7 +123,7 @@ export default function SignInPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="btn-black w-full py-3 text-sm justify-center"
+                  className="btn-primary w-full py-3 text-sm justify-center"
                 >
                   {loading ? (
                     <span className="flex items-center gap-2">

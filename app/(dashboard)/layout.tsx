@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookmarkIcon, LogOut, Upload, Search, Bell } from "lucide-react";
+import { BookmarkIcon, LogOut, Upload, Search, Bell, Settings } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -37,12 +37,18 @@ const mockBookmarks = [
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const [activeCategory, setActiveCategory] = useState("Finance");
+  const [mounted, setMounted] = useState(false);
 
-  // Extract category from URL if on dashboard
-  const isDashboard = pathname === "/dashboard" || pathname?.startsWith("/dashboard");
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Layout states based on pathname
+  const isDashboardGrid = pathname === "/dashboard";
+  const isChatPage = pathname?.includes("/chat");
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-[100dvh] bg-white flex flex-col">
       {/* ─── Top Nav ──────────────────────────────────── */}
       <nav className="sticky top-0 z-50 bg-white border-b border-black/10">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -54,97 +60,89 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               </span>
             </Link>
 
-            {/* Category tabs — center */}
-            {isDashboard && (
-              <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
-                {categories.map((cat) => (
-                  <Link key={cat} href={`/dashboard?category=${cat.toLowerCase()}`}>
-                    <button
-                      onClick={() => setActiveCategory(cat)}
-                      className={
-                        activeCategory === cat
-                          ? "category-pill-active"
-                          : "category-pill-inactive"
-                      }
-                    >
-                      {cat}
-                    </button>
-                  </Link>
-                ))}
-              </div>
-            )}
 
-            {/* Right actions */}
-            <div className="flex items-center gap-3 flex-shrink-0">
+
+            {/* Right — User Menu */}
+            <div className="flex items-center gap-3 flex-shrink-0 relative">
               {/* Search */}
               <button className="p-2 rounded-full hover:bg-gray-100 transition-colors" title="Search">
-                <Search className="w-4 h-4 text-gray-500" />
+                <Search className="w-5 h-5 text-gray-500" />
               </button>
 
-              {/* Upload */}
-              <Link href="/dashboard/upload">
-                <button className="btn-yellow text-xs px-4 py-2">
-                  <Upload className="w-3.5 h-3.5" />
-                  Upload
-                </button>
-              </Link>
+              {/* Notifications */}
+              <button className="p-2 rounded-full hover:bg-gray-100 transition-colors relative" title="Notifications">
+                <Bell className="w-5 h-5 text-gray-500" />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-yellow-400 rounded-full border border-white" />
+              </button>
 
-              {/* Bookmarks slide-over */}
-              <Sheet>
-                <SheetTrigger asChild>
-                  <button className="btn-black text-xs px-4 py-2">
-                    <BookmarkIcon className="w-3.5 h-3.5" />
-                    Your Bookmarks
-                  </button>
-                </SheetTrigger>
-                <SheetContent side="right" className="w-full max-w-md p-0 border-l border-black">
-                  <div className="h-full flex flex-col">
-                    <SheetHeader className="px-6 py-5 border-b border-black/10">
-                      <SheetTitle className="font-typewriter text-lg font-bold">
-                        Your Bookmarks
-                      </SheetTitle>
-                      <p className="text-xs text-gray-400">{mockBookmarks.length} saved highlights</p>
-                    </SheetHeader>
-                    <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
-                      <AnimatePresence>
-                        {mockBookmarks.map((bm, i) => (
-                          <motion.div
-                            key={bm.id}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.05 }}
-                            className="paper-card-static p-4 rounded-xl"
-                          >
-                            <p className="text-sm italic text-gray-700 leading-relaxed mb-3">
-                              &ldquo;{bm.text}&rdquo;
-                            </p>
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-black">{bm.book}</span>
-                              <span className="text-xs text-gray-400">{bm.date}</span>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </AnimatePresence>
+              {/* User Avatar + Dropdown */}
+              {mounted ? (
+                <Sheet>
+                  <SheetTrigger
+                    render={
+                      <button className="w-9 h-9 rounded-full bg-black text-white flex items-center justify-center text-sm font-bold hover:ring-2 hover:ring-yellow-400 transition-all cursor-pointer" />
+                    }
+                  >
+                    IZ
+                  </SheetTrigger>
+                  <SheetContent side="right" className="w-full max-w-sm p-0 border-l border-black">
+                    <div className="h-full flex flex-col">
+                      <SheetHeader className="px-6 py-6 border-b border-black/10">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-full bg-black text-white flex items-center justify-center text-lg font-bold">
+                            IZ
+                          </div>
+                          <div>
+                            <SheetTitle className="font-typewriter text-base font-bold">
+                              Izaz Zubayer
+                            </SheetTitle>
+                            <p className="text-sm text-gray-400">izaz@notesoftomorrow.com</p>
+                          </div>
+                        </div>
+                      </SheetHeader>
+                      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-1">
+                        <Link href="/dashboard" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 transition-colors text-sm font-medium text-black">
+                          <BookmarkIcon className="w-4 h-4 text-gray-500" />
+                          Your Bookmarks
+                        </Link>
+                        <Link href="/dashboard/upload" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 transition-colors text-sm font-medium text-black">
+                          <Upload className="w-4 h-4 text-gray-500" />
+                          Upload a Book
+                        </Link>
+                        <Link href="#" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 transition-colors text-sm font-medium text-black">
+                          <Settings className="w-4 h-4 text-gray-500" />
+                          Settings
+                        </Link>
+                      </div>
+                      <div className="px-6 py-4 border-t border-black/10">
+                        <Link href="/">
+                          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 transition-colors text-sm font-medium text-red-600">
+                            <LogOut className="w-4 h-4" />
+                            Sign Out
+                          </button>
+                        </Link>
+                      </div>
                     </div>
-                  </div>
-                </SheetContent>
-              </Sheet>
-
-              {/* Sign out */}
-              <Link href="/">
-                <button className="p-2 rounded-full hover:bg-gray-100 transition-colors" title="Sign out">
-                  <LogOut className="w-4 h-4 text-gray-500" />
-                </button>
-              </Link>
+                  </SheetContent>
+                </Sheet>
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-black text-white flex items-center justify-center text-sm font-bold opacity-0" />
+              )}
             </div>
           </div>
         </div>
       </nav>
 
       {/* ─── Page Content ─────────────────────────────── */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {children}
-      </main>
+      {!isChatPage ? (
+        <main className="max-w-7xl w-full mx-auto px-6 py-8 flex-1">
+          {children}
+        </main>
+      ) : (
+        <main className="w-full flex-1 overflow-hidden">
+          {children}
+        </main>
+      )}
     </div>
   );
 }

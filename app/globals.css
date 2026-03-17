@@ -46,9 +46,9 @@
   --radius-full: 9999px;
 
   /* Typography */
-  --font-sans: var(--font-jetbrains), "JetBrains Mono", "Courier New", monospace;
+  --font-sans: var(--font-anek), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: var(--font-jetbrains), "JetBrains Mono", monospace;
-  --font-typewriter: var(--font-american-typewriter), "American Typewriter", "Courier New", serif;
+  --font-typewriter: "American Typewriter", "Courier", serif;
 }
 
 /* ─── CSS Variables ─────────────────────────────────────────── */
@@ -89,13 +89,13 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: "JetBrains Mono", "Courier New", monospace;
-    font-size: 15px;
+    font-family: var(--font-sans);
+    font-size: 16px;
     line-height: 1.6;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: "JetBrains Mono", "Courier New", monospace;
+    font-family: var(--font-typewriter);
     font-weight: 700;
     letter-spacing: -0.02em;
   }
@@ -106,231 +106,218 @@
   }
 }
 
-/* ─── Custom Utilities ──────────────────────────────────────── */
-@layer utilities {
+/* ─── Custom Styles ──────────────────────────────────────── */
 
-  /* Typewriter-style text */
-  .font-typewriter {
-    font-family: "JetBrains Mono", "Courier New", monospace;
-    letter-spacing: -0.02em;
-  }
+/* Typewriter-style text */
+.font-typewriter {
+  font-family: var(--font-typewriter);
+  letter-spacing: -0.02em;
+}
 
-  /* Yellow highlight — like a marker on paper */
-  .highlight-yellow {
-    background-color: #ffba00;
-    padding: 0 6px 2px;
-    border-radius: 4px;
-    display: inline-block;
-  }
+/* Yellow highlight — like a marker on paper */
+.highlight-yellow {
+  background-color: #ffba00;
+  padding: 0 6px 2px;
+  border-radius: 4px;
+  display: inline-block;
+}
 
-  /* Paper card — the core visual primitive */
-  .paper-card {
-    background: #ffffff;
-    border: 1.5px solid #000000;
-    border-radius: 16px;
-    transition: box-shadow 0.2s ease, transform 0.2s ease;
-  }
+/* Paper card — the core visual primitive */
+.paper-card {
+  background: #ffffff;
+  border: 1.44px solid #000000;
+  border-radius: 16px;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
 
-  .paper-card:hover {
-    box-shadow: 4px 4px 0px #000000;
-    transform: translate(-2px, -2px);
-  }
+.paper-card:hover {
+  box-shadow: 4px 4px 0px #000000;
+  transform: translate(-2px, -2px);
+}
 
-  /* Paper card static (no hover) */
-  .paper-card-static {
-    background: #ffffff;
-    border: 1.5px solid #000000;
-    border-radius: 16px;
-  }
+/* Paper card static (no hover) */
+.paper-card-static {
+  background: #ffffff;
+  border: 1.44px solid #000000;
+  border-radius: 16px;
+}
 
-  /* Pill button — yellow CTA */
-  .btn-yellow {
-    background-color: #ffba00;
-    color: #000000;
-    font-weight: 600;
-    border-radius: 9999px;
-    padding: 10px 24px;
-    border: none;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 14px;
-    transition: background-color 0.15s ease, transform 0.1s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-  }
+/* Pill button — Primary */
+.btn-primary {
+  background-color: #ffba00;
+  color: #000000;
+  font-weight: 600;
+  border-radius: 9999px;
+  padding: 10px 24px;
+  border: 1.44px solid #000000;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 
-  .btn-yellow:hover {
-    background-color: #e6a800;
-    transform: scale(1.02);
-  }
+.btn-primary:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0px #000000;
+}
 
-  /* Pill button — black */
-  .btn-black {
-    background-color: #000000;
-    color: #ffffff;
-    font-weight: 600;
-    border-radius: 9999px;
-    padding: 10px 24px;
-    border: none;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 14px;
-    transition: background-color 0.15s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-  }
+/* Pill button — Secondary */
+.btn-secondary {
+  background-color: #ffffff;
+  color: #000000;
+  font-weight: 600;
+  border-radius: 9999px;
+  padding: 10px 24px;
+  border: 1.44px solid #000000;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 
-  .btn-black:hover {
-    background-color: #262626;
-  }
+.btn-secondary:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0px #000000;
+}
 
-  /* Ghost pill */
-  .btn-ghost {
-    background-color: transparent;
-    color: #000000;
-    font-weight: 600;
-    border-radius: 9999px;
-    padding: 10px 24px;
-    border: 1.5px solid #000000;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 14px;
-    transition: background-color 0.15s ease, color 0.15s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-  }
+/* Category pill */
+.category-pill-active {
+  background-color: #000000;
+  color: #ffffff;
+  border-radius: 9999px;
+  padding: 6px 18px;
+  font-weight: 600;
+  font-size: 15px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border: none;
+}
 
-  .btn-ghost:hover {
-    background-color: #000000;
-    color: #ffffff;
-  }
+.category-pill-inactive {
+  background-color: transparent;
+  color: #525252;
+  border-radius: 9999px;
+  padding: 6px 18px;
+  font-weight: 500;
+  font-size: 15px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
 
-  /* Category pill */
-  .category-pill-active {
-    background-color: #000000;
-    color: #ffffff;
-    border-radius: 9999px;
-    padding: 6px 18px;
-    font-weight: 600;
-    font-size: 14px;
-    font-family: inherit;
-    cursor: pointer;
-    border: none;
-  }
+.category-pill-inactive:hover {
+  background-color: #e5e5e5;
+  color: #000000;
+}
 
-  .category-pill-inactive {
-    background-color: transparent;
-    color: #000000;
-    border-radius: 9999px;
-    padding: 6px 18px;
-    font-weight: 500;
-    font-size: 14px;
-    font-family: inherit;
-    cursor: pointer;
-    border: none;
-    transition: background-color 0.15s ease;
-  }
+/* Author tag pill */
+.author-tag {
+  background-color: #f5f5f5;
+  color: #525252;
+  border-radius: 9999px;
+  padding: 2px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  display: inline-block;
+}
 
-  .category-pill-inactive:hover {
-    background-color: #f5f5f5;
-  }
+/* Subtle paper texture overlay */
+.paper-texture {
+  background-image: 
+    radial-gradient(ellipse at top left, rgba(255, 186, 0, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom right, rgba(0, 0, 0, 0.02) 0%, transparent 50%);
+}
 
-  /* Author tag pill */
-  .author-tag {
-    background-color: #f5f5f5;
-    color: #525252;
-    border-radius: 9999px;
-    padding: 2px 10px;
-    font-size: 12px;
-    font-weight: 500;
-    display: inline-block;
-  }
+/* Chat bubble — user */
+.chat-bubble-user {
+  background-color: #000000;
+  color: #ffffff;
+  border-radius: 18px 18px 4px 18px;
+  padding: 12px 16px;
+  max-width: 70%;
+  margin-left: auto;
+}
 
-  /* Subtle paper texture overlay */
-  .paper-texture {
-    background-image: 
-      radial-gradient(ellipse at top left, rgba(255, 186, 0, 0.04) 0%, transparent 50%),
-      radial-gradient(ellipse at bottom right, rgba(0, 0, 0, 0.02) 0%, transparent 50%);
-  }
+/* Chat bubble — AI */
+.chat-bubble-ai {
+  background-color: #ffffff;
+  color: #000000;
+  border: 1.5px solid #000000;
+  border-radius: 18px 18px 18px 4px;
+  padding: 12px 16px;
+  max-width: 80%;
+}
 
-  /* Chat bubble — user */
-  .chat-bubble-user {
-    background-color: #000000;
-    color: #ffffff;
-    border-radius: 18px 18px 4px 18px;
-    padding: 12px 16px;
-    max-width: 70%;
-    margin-left: auto;
-  }
+/* Highlight citation card */
+.highlight-citation {
+  background-color: #fafafa;
+  border-left: 3px solid #ffba00;
+  border-radius: 0 8px 8px 0;
+  padding: 10px 14px;
+  margin-top: 10px;
+  font-size: 14px;
+  font-style: italic;
+}
 
-  /* Chat bubble — AI */
-  .chat-bubble-ai {
-    background-color: #ffffff;
-    color: #000000;
-    border: 1.5px solid #000000;
-    border-radius: 18px 18px 18px 4px;
-    padding: 12px 16px;
-    max-width: 80%;
-  }
+/* Scrollbar styling */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
 
-  /* Highlight citation card */
-  .highlight-citation {
-    background-color: #fafafa;
-    border-left: 3px solid #ffba00;
-    border-radius: 0 8px 8px 0;
-    padding: 10px 14px;
-    margin-top: 10px;
-    font-size: 13px;
-    font-style: italic;
-  }
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
 
-  /* Scrollbar styling */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
+::-webkit-scrollbar-track {
+  background: #f5f5f5;
+}
 
-  ::-webkit-scrollbar-track {
-    background: #f5f5f5;
-  }
+::-webkit-scrollbar-thumb {
+  background: #a3a3a3;
+  border-radius: 3px;
+}
 
-  ::-webkit-scrollbar-thumb {
-    background: #a3a3a3;
-    border-radius: 3px;
-  }
+::-webkit-scrollbar-thumb:hover {
+  background: #525252;
+}
 
-  ::-webkit-scrollbar-thumb:hover {
-    background: #525252;
-  }
+/* Focus ring */
+.focus-ring {
+  outline: 2px solid #ffba00;
+  outline-offset: 2px;
+}
 
-  /* Focus ring */
-  .focus-ring {
-    outline: 2px solid #ffba00;
-    outline-offset: 2px;
-  }
+/* Animated underline on hover */
+.hover-underline {
+  position: relative;
+}
 
-  /* Animated underline on hover */
-  .hover-underline {
-    position: relative;
-  }
+.hover-underline::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background-color: #ffba00;
+  transition: width 0.2s ease;
+}
 
-  .hover-underline::after {
-    content: '';
-    position: absolute;
-    bottom: -2px;
-    left: 0;
-    width: 0;
-    height: 2px;
-    background-color: #ffba00;
-    transition: width 0.2s ease;
-  }
-
-  .hover-underline:hover::after {
-    width: 100%;
-  }
+.hover-underline:hover::after {
+  width: 100%;
 }
 
 /* ─── Animations ─────────────────────────────────────────────── */

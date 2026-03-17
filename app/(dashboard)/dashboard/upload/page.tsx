@@ -222,7 +222,7 @@ export default function UploadPage() {
             <button
               onClick={handleProceedToMeta}
               disabled={uploadMethod === "file" ? !file : !pastedText.trim()}
-              className="btn-black w-full py-3 mt-6 justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn-primary w-full py-3 mt-6 justify-center disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Continue <ArrowRight className="w-4 h-4" />
             </button>
@@ -308,13 +308,13 @@ export default function UploadPage() {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button onClick={() => setStep(1)} className="btn-ghost flex-1 py-3 justify-center">
+              <button onClick={() => setStep(1)} className="btn-secondary flex-1 py-3 justify-center">
                 Back
               </button>
               <button
                 onClick={handleStartProcessing}
                 disabled={!meta.title || !meta.author}
-                className="btn-yellow flex-1 py-3 justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+                className="btn-primary flex-1 py-3 justify-center disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Upload Book <ArrowRight className="w-4 h-4" />
               </button>
@@ -385,12 +385,12 @@ export default function UploadPage() {
 
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link href="/dashboard/library/1/chat">
-                <button className="btn-yellow text-sm px-8 py-3">
+                <button className="btn-primary text-sm px-8 py-3">
                   Start Chatting <ArrowRight className="w-4 h-4" />
                 </button>
               </Link>
               <Link href="/dashboard">
-                <button className="btn-ghost text-sm px-8 py-3">
+                <button className="btn-secondary text-sm px-8 py-3">
                   View Library
                 </button>
               </Link>

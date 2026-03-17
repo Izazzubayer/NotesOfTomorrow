@@ -31,9 +31,9 @@ export default function SignUpPage() {
         </Link>
         <div className="flex items-center gap-3">
           <Link href="/sign-in">
-            <button className="btn-ghost text-sm px-5 py-2">Sign In</button>
+            <button className="btn-secondary text-sm px-5 py-2">Sign In</button>
           </Link>
-          <button className="btn-black text-sm px-5 py-2">Sign Up</button>
+          <button className="btn-primary text-sm px-5 py-2">Sign Up</button>
         </div>
       </nav>
 
@@ -119,7 +119,7 @@ export default function SignUpPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="btn-yellow w-full py-3 text-sm justify-center mt-2"
+                  className="btn-primary w-full py-3 text-sm justify-center mt-2"
                 >
                   {loading ? (
                     <span className="flex items-center gap-2">

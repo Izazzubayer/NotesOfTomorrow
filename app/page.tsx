@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { ArrowRight, BookOpen, MessageSquare, Sparkles, Star, ChevronRight } from "lucide-react";
 
@@ -60,7 +61,7 @@ const fadeUp = {
   visible: (i = 0) => ({
     opacity: 1,
     y: 0,
-    transition: { duration: 0.5, delay: i * 0.1, ease: "easeOut" },
+    transition: { duration: 0.5, delay: i * 0.1, ease: "easeOut" as const },
   }),
 };
 
@@ -81,167 +82,104 @@ export default function LandingPage() {
           {/* Nav actions */}
           <div className="flex items-center gap-3">
             <Link href="/sign-in">
-              <button className="btn-yellow text-sm px-5 py-2">
+              <button className="btn-primary text-sm px-5 py-2">
                 Sign In
               </button>
             </Link>
             <Link href="/sign-up">
-              <span className="text-sm font-semibold text-black hover-underline cursor-pointer">
+              <button className="btn-secondary text-sm px-5 py-2">
                 Sign Up
-              </span>
+              </button>
             </Link>
           </div>
         </div>
       </nav>
 
       {/* ─── Hero ─────────────────────────────────────── */}
-      <section className="max-w-6xl mx-auto px-6 pt-16 pb-24 flex flex-col items-center text-center">
-        {/* Eyebrow */}
-        <motion.div
-          initial="hidden"
-          animate="visible"
-          custom={0}
-          variants={fadeUp}
-        >
-          <span className="inline-flex items-center gap-2 bg-black text-white text-xs font-semibold px-4 py-1.5 rounded-full mb-6">
-            <Sparkles className="w-3 h-3 text-yellow-400" />
-            AI-Powered Book Companion
-          </span>
-        </motion.div>
+      <section className="max-w-7xl mx-auto px-6 pt-12 md:pt-24 pb-24 grid grid-cols-1 lg:grid-cols-[0.8fr_1.2fr] gap-12 items-center overflow-hidden">
+        {/* Left Content */}
+        <div className="flex flex-col items-start text-left order-2 lg:order-1 relative z-10">
+          {/* Tagline */}
+          <motion.h1
+            initial="hidden"
+            animate="visible"
+            custom={2}
+            variants={fadeUp}
+            className="text-2xl md:text-3xl lg:text-4xl font-bold font-typewriter leading-tight tracking-tight text-black mb-6"
+          >
+            Don&apos;t Just Read A Book.
+            <br />
+            Chat With It.
+          </motion.h1>
 
-        {/* Illustration */}
+          <motion.p
+            initial="hidden"
+            animate="visible"
+            custom={3}
+            variants={fadeUp}
+            className="text-lg md:text-xl text-gray-600 max-w-xl mb-10 leading-relaxed"
+          >
+            Upload your highlights. Describe your situation. Get wisdom from your
+            books that actually applies to your life — right now.
+          </motion.p>
+
+          {/* CTAs */}
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            custom={4}
+            variants={fadeUp}
+            className="flex flex-col sm:flex-row items-center gap-4 mb-8"
+          >
+            <Link href="/sign-up">
+              <button className="btn-primary text-base px-8 py-3">
+                Get Started
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </Link>
+            <Link href="/sign-in">
+              <button className="btn-secondary text-base px-8 py-3">
+                Sign In
+              </button>
+            </Link>
+          </motion.div>
+
+          {/* Social proof bar */}
+          <motion.p
+            initial="hidden"
+            animate="visible"
+            custom={5}
+            variants={fadeUp}
+            className="text-sm text-gray-400 flex items-center gap-2"
+          >
+            <span className="flex">
+              {[...Array(5)].map((_, i) => (
+                <Star key={i} className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+              ))}
+            </span>
+            <span>Loved by 1,000+ readers · Free to start</span>
+          </motion.p>
+        </div>
+
+        {/* Right Content — Image */}
         <motion.div
           initial="hidden"
           animate="visible"
           custom={1}
           variants={fadeUp}
-          className="mb-10 relative"
+          className="relative order-1 lg:order-2 scale-110 lg:scale-125 transition-transform duration-500"
         >
-          <div className="w-64 h-64 mx-auto relative">
-            {/* Blob background */}
-            <div className="absolute inset-0 bg-indigo-100 rounded-[60%_40%_30%_70%/60%_30%_70%_40%] opacity-60" />
-            {/* Desk illustration — SVG */}
-            <svg viewBox="0 0 300 280" className="relative w-full h-full" aria-label="Person studying at desk at night">
-              {/* Window */}
-              <rect x="200" y="20" width="80" height="100" rx="6" fill="#1e1b4b" opacity="0.9" />
-              <rect x="208" y="28" width="30" height="40" rx="3" fill="#4f46e5" opacity="0.7" />
-              <rect x="242" y="28" width="30" height="40" rx="3" fill="#4338ca" opacity="0.7" />
-              {/* Stars */}
-              <circle cx="215" cy="15" r="1.5" fill="#fbbf24" />
-              <circle cx="235" cy="8" r="1" fill="#fbbf24" />
-              <circle cx="250" cy="18" r="1.5" fill="#fbbf24" />
-              <circle cx="270" cy="10" r="1" fill="#fbbf24" />
-              {/* Plant */}
-              <rect x="230" y="155" width="8" height="30" rx="4" fill="#92400e" />
-              <ellipse cx="234" cy="145" rx="18" ry="22" fill="#065f46" />
-              <ellipse cx="220" cy="155" rx="14" ry="16" fill="#047857" />
-              <ellipse cx="248" cy="152" rx="12" ry="14" fill="#059669" />
-              {/* Desk */}
-              <rect x="50" y="180" width="210" height="10" rx="3" fill="#374151" />
-              <rect x="70" y="190" width="8" height="40" rx="4" fill="#374151" />
-              <rect x="240" y="190" width="8" height="40" rx="4" fill="#374151" />
-              {/* Monitor */}
-              <rect x="130" y="100" width="100" height="75" rx="6" fill="#111827" />
-              <rect x="137" y="107" width="86" height="60" rx="4" fill="#1d4ed8" opacity="0.8" />
-              <rect x="170" y="175" width="24" height="8" rx="2" fill="#374151" />
-              {/* Lamp */}
-              <line x1="95" y1="180" x2="95" y2="130" stroke="#6b7280" strokeWidth="3" />
-              <ellipse cx="95" cy="125" rx="20" ry="10" fill="#fbbf24" opacity="0.9" />
-              <ellipse cx="95" cy="122" rx="9" ry="4" fill="#f59e0b" />
-              {/* Lamp glow */}
-              <ellipse cx="95" cy="145" rx="30" ry="15" fill="#fbbf24" opacity="0.1" />
-              {/* Person */}
-              <circle cx="160" cy="120" r="18" fill="#fde68a" />
-              {/* Hair */}
-              <path d="M142 112 Q160 95 178 112 Q175 100 160 97 Q145 100 142 112Z" fill="#1f2937" />
-              {/* Body */}
-              <ellipse cx="160" cy="162" rx="22" ry="18" fill="#fbbf24" />
-              {/* Arm on desk */}
-              <path d="M148 158 Q140 170 135 178" stroke="#fde68a" strokeWidth="10" strokeLinecap="round" fill="none" />
-              {/* Hand on face thinking */}
-              <path d="M172 138 Q176 148 170 155" stroke="#fde68a" strokeWidth="8" strokeLinecap="round" fill="none" />
-              {/* Coffee */}
-              <rect x="60" y="168" width="18" height="14" rx="3" fill="#7c3aed" />
-              <path d="M78 172 Q85 172 82 178 Q80 183 78 182" stroke="#7c3aed" strokeWidth="2" fill="none" />
-              {/* Steam */}
-              <path d="M65 165 Q67 158 65 152" stroke="#9ca3af" strokeWidth="1.5" fill="none" opacity="0.6" />
-              <path d="M70 165 Q72 158 70 152" stroke="#9ca3af" strokeWidth="1.5" fill="none" opacity="0.6" />
-              {/* Cat */}
-              <ellipse cx="220" cy="225" rx="20" ry="12" fill="#d97706" />
-              <circle cx="212" cy="215" r="9" fill="#d97706" />
-              <polygon points="207,208 210,200 213,208" fill="#d97706" />
-              <polygon points="215,208 218,200 221,208" fill="#d97706" />
-              <circle cx="210" cy="215" r="2" fill="#1f2937" />
-              <path d="M205 220 Q212 222 220 220" stroke="#92400e" strokeWidth="1" fill="none" />
-              {/* Pencil cup */}
-              <rect x="85" y="162" width="16" height="20" rx="4" fill="#db2777" />
-              <line x1="89" y1="162" x2="86" y2="148" stroke="#fbbf24" strokeWidth="2.5" />
-              <line x1="93" y1="162" x2="93" y2="147" stroke="#374151" strokeWidth="2.5" />
-              <line x1="97" y1="162" x2="98" y2="149" stroke="#ef4444" strokeWidth="2.5" />
-            </svg>
+          <div className="w-full relative">
+            <Image
+              src="/Hero Image.png"
+              alt="Notes of Tomorrow Hero illustration"
+              width={1000}
+              height={800}
+              priority
+              className="relative z-10 w-full h-auto"
+            />
           </div>
         </motion.div>
-
-        {/* Tagline */}
-        <motion.h1
-          initial="hidden"
-          animate="visible"
-          custom={2}
-          variants={fadeUp}
-          className="text-4xl md:text-5xl lg:text-6xl font-bold font-typewriter leading-tight tracking-tight text-black mb-6 max-w-3xl"
-        >
-          Don&apos;t Just Read A Book.
-          <br />
-          Chat With It.
-        </motion.h1>
-
-        <motion.p
-          initial="hidden"
-          animate="visible"
-          custom={3}
-          variants={fadeUp}
-          className="text-base text-gray-600 max-w-xl mb-10 leading-relaxed"
-        >
-          Upload your highlights. Describe your situation. Get wisdom from your
-          books that actually applies to your life — right now.
-        </motion.p>
-
-        {/* CTAs */}
-        <motion.div
-          initial="hidden"
-          animate="visible"
-          custom={4}
-          variants={fadeUp}
-          className="flex flex-col sm:flex-row items-center gap-4"
-        >
-          <Link href="/sign-up">
-            <button className="btn-yellow text-base px-8 py-3">
-              Get Started
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </Link>
-          <Link href="/sign-in">
-            <button className="btn-ghost text-base px-8 py-3">
-              Sign In
-            </button>
-          </Link>
-        </motion.div>
-
-        {/* Social proof bar */}
-        <motion.p
-          initial="hidden"
-          animate="visible"
-          custom={5}
-          variants={fadeUp}
-          className="mt-8 text-xs text-gray-400 flex items-center gap-2"
-        >
-          <span className="flex">
-            {[...Array(5)].map((_, i) => (
-              <Star key={i} className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-            ))}
-          </span>
-          <span>Loved by 1,000+ readers · Free to start</span>
-        </motion.p>
       </section>
 
       {/* ─── How It Works ─────────────────────────────── */}
@@ -255,10 +193,10 @@ export default function LandingPage() {
             variants={fadeUp}
             className="text-center mb-16"
           >
-            <span className="text-xs font-semibold text-yellow-400 tracking-widest uppercase mb-3 block">
+            <span className="text-sm font-semibold text-yellow-400 tracking-widest uppercase mb-3 block">
               How It Works
             </span>
-            <h2 className="text-3xl md:text-4xl font-bold font-typewriter">
+            <h2 className="text-2xl md:text-3xl font-bold font-typewriter">
               From highlights to wisdom,
               <br />
               in minutes.
@@ -286,7 +224,7 @@ export default function LandingPage() {
                     </div>
                   </div>
                   <h3 className="text-xl font-bold mb-3 font-typewriter">{step.title}</h3>
-                  <p className="text-gray-400 text-sm leading-relaxed">{step.description}</p>
+                  <p className="text-gray-400 text-base leading-relaxed">{step.description}</p>
                 </div>
 
                 {/* Arrow connector */}
@@ -311,10 +249,10 @@ export default function LandingPage() {
           variants={fadeUp}
           className="text-center mb-16"
         >
-          <span className="text-xs font-semibold text-gray-400 tracking-widest uppercase mb-3 block">
+          <span className="text-sm font-semibold text-gray-400 tracking-widest uppercase mb-3 block">
             Book Categories
           </span>
-          <h2 className="text-3xl md:text-4xl font-bold font-typewriter text-black">
+          <h2 className="text-2xl md:text-3xl font-bold font-typewriter text-black">
             Organize your reading by
             <br />
             what matters to you.
@@ -333,10 +271,10 @@ export default function LandingPage() {
             >
               <div className="paper-card p-6 text-center cursor-pointer group">
                 <span className="text-3xl mb-3 block">{cat.emoji}</span>
-                <div className="font-bold text-sm font-typewriter text-black mb-1">
+                <div className="font-bold text-base font-typewriter text-black mb-1">
                   {cat.name}
                 </div>
-                <div className="text-xs text-gray-400">{cat.books} books</div>
+                <div className="text-sm text-gray-400">{cat.books} books</div>
               </div>
             </motion.div>
           ))}
@@ -354,10 +292,10 @@ export default function LandingPage() {
             variants={fadeUp}
             className="text-center mb-16"
           >
-            <span className="text-xs font-semibold text-gray-400 tracking-widest uppercase mb-3 block">
+            <span className="text-sm font-semibold text-gray-400 tracking-widest uppercase mb-3 block">
               What Readers Say
             </span>
-            <h2 className="text-3xl md:text-4xl font-bold font-typewriter text-black">
+            <h2 className="text-2xl md:text-3xl font-bold font-typewriter text-black">
               The &quot;wow&quot; moment is real.
             </h2>
           </motion.div>
@@ -378,7 +316,7 @@ export default function LandingPage() {
                       <Star key={j} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                     ))}
                   </div>
-                  <p className="text-sm leading-relaxed text-gray-700 mb-6 flex-1 italic">
+                  <p className="text-base leading-relaxed text-gray-700 mb-6 flex-1 italic">
                     &quot;{t.quote}&quot;
                   </p>
                   <div>
@@ -401,18 +339,18 @@ export default function LandingPage() {
           variants={fadeUp}
           className="paper-card-static bg-black text-white p-16 rounded-3xl"
         >
-          <h2 className="text-3xl md:text-4xl font-bold font-typewriter mb-4">
+          <h2 className="text-2xl md:text-3xl font-bold font-typewriter mb-4">
             Your books are waiting
             <br />
             to{" "}
             <span className="text-yellow-400">talk to you.</span>
           </h2>
-          <p className="text-gray-400 mb-8 text-sm max-w-md mx-auto">
+          <p className="text-gray-400 mb-8 text-base max-w-md mx-auto">
             Join thousands of readers who turned their highlights into a
             living, conversational knowledge base.
           </p>
           <Link href="/sign-up">
-            <button className="btn-yellow text-base px-10 py-3">
+            <button className="btn-primary text-base px-10 py-3">
               Start For Free
               <ArrowRight className="w-4 h-4" />
             </button>
@@ -426,12 +364,12 @@ export default function LandingPage() {
           <span className="font-bold font-typewriter text-black">
             Notes of <span className="highlight-yellow">Tomorrow</span>
           </span>
-          <div className="flex items-center gap-6 text-xs text-gray-400">
+          <div className="flex items-center gap-6 text-sm text-gray-400">
             <Link href="#" className="hover:text-black transition-colors">Privacy</Link>
             <Link href="#" className="hover:text-black transition-colors">Terms</Link>
             <Link href="#" className="hover:text-black transition-colors">Contact</Link>
           </div>
-          <span className="text-xs text-gray-400">© 2026 Notes of Tomorrow</span>
+          <span className="text-sm text-gray-400">© 2026 Notes of Tomorrow</span>
         </div>
       </footer>
     </div>
