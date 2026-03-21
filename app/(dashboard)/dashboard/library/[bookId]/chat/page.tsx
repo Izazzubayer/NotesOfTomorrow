@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Send,
@@ -23,8 +24,16 @@ import {
   ArrowUp,
   Plus,
   Trash2,
+  Loader2,
+  ZoomIn,
+  ZoomOut,
+  Search,
+  X,
 } from "lucide-react";
 import Link from "next/link";
+import { auth, db } from "@/lib/firebase/client";
+import { doc, collection, getDoc, getDocs, orderBy, query, limit } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 // ─── Types ──────────────────────────────────────────────────
 type Role = "user" | "assistant";
@@ -45,34 +54,14 @@ type Message = {
   isStreaming?: boolean;
 };
 
-// ─── Mock Data ───────────────────────────────────────────────
-const MOCK_BOOK = {
-  id: "1",
-  title: "The Psychology of Money",
-  author: "Morgan Housel",
-  highlightCount: 74,
-  category: "Finance",
+type BookData = {
+  id: string;
+  title: string;
+  author: string;
+  highlightCount: number;
+  category: string;
+  coverUrl?: string;
 };
-
-const SAMPLE_HIGHLIGHTS: HighlightCitation[] = [
-  { id: "h1", text: "Doing well with money isn't necessarily about what you know. It's about how you behave.", page: "p.4" },
-  { id: "h2", text: "The most important part of every plan is planning on your plan not going according to plan.", page: "p.98" },
-  { id: "h3", text: "Getting money and keeping money are two different skills.", page: "p.23" },
-  { id: "h4", text: "The most powerful and most overlooked force in finance is compounding. It works best quietly, and without interruption.", page: "p.51" },
-  { id: "h5", text: "Someone driving a $100,000 car might be wealthy, or might be broke. You can't tell just by looking.", page: "p.87" },
-];
-
-const SUGGESTED_PROMPTS = [
-  "I'm struggling with saving money — what does this book say?",
-  "Quiz me on the 3 key ideas from this book",
-  "What did this book say about long-term investing?",
-];
-
-const OPENING_NUDGES = [
-  "Hey! I've read through all 74 of your highlights from **The Psychology of Money**.\n\nBefore we dive in — what's going on in your life right now that made you want to revisit this book?",
-  "You've got **74 highlights** from The Psychology of Money. What's on your mind today? Tell me what you're dealing with and I'll pull out what's most relevant for you.",
-  "Welcome! Is there a specific situation you're navigating right now, or would you like me to suggest some ideas from the book based on common challenges?",
-];
 
 // ─── Formatting Helper ───────────────────────────────────────
 function formatAIResponse(
@@ -203,6 +192,186 @@ function MessageBubble({
   );
 }
 
+// ─── Highlight Viewer (Column 2) ─────────────────────────────
+function HighlightViewer({
+  highlights,
+  hoveredCitationId,
+  onHoverHighlight,
+  book,
+}: {
+  highlights: HighlightCitation[];
+  hoveredCitationId: string | null;
+  onHoverHighlight: (id: string | null) => void;
+  book: BookData;
+}) {
+  const [zoom, setZoom] = useState(1);
+  const [search, setSearch] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const highlightedRef = useRef<HTMLDivElement | null>(null);
+
+  const filtered = search.trim()
+    ? highlights.filter((h) => h.text.toLowerCase().includes(search.toLowerCase()))
+    : highlights;
+
+  // Auto-scroll to hovered highlight
+  useEffect(() => {
+    if (hoveredCitationId && highlightedRef.current) {
+      highlightedRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [hoveredCitationId]);
+
+  return (
+    <div className="flex-1 flex flex-col bg-[#F7F6F2] border-r border-black/10 min-w-0 overflow-hidden">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-black/8 bg-white/80 backdrop-blur-sm flex-shrink-0">
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+            {filtered.length} / {highlights.length} highlights
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          <AnimatePresence>
+            {showSearch && (
+              <motion.div
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 180, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <input
+                  autoFocus
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search highlights…"
+                  className="w-full text-sm bg-gray-100 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-yellow-400 border border-black/8"
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <button
+            onClick={() => { setShowSearch(!showSearch); if (showSearch) setSearch(""); }}
+            className={`p-1.5 rounded-lg transition-colors ${
+              showSearch ? "bg-yellow-400 text-black" : "hover:bg-black/5 text-gray-400 hover:text-black"
+            }`}
+            title="Search highlights"
+          >
+            {showSearch ? <X className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+          </button>
+          <div className="w-px h-4 bg-black/10 mx-1" />
+          <button
+            onClick={() => setZoom((z) => Math.max(0.7, +(z - 0.1).toFixed(1)))}
+            disabled={zoom <= 0.7}
+            className="p-1.5 rounded-lg hover:bg-black/5 text-gray-400 hover:text-black transition-colors disabled:opacity-30"
+            title="Zoom out"
+          >
+            <ZoomOut className="w-4 h-4" />
+          </button>
+          <span className="text-[10px] font-mono text-gray-400 w-8 text-center">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            onClick={() => setZoom((z) => Math.min(1.6, +(z + 0.1).toFixed(1)))}
+            disabled={zoom >= 1.6}
+            className="p-1.5 rounded-lg hover:bg-black/5 text-gray-400 hover:text-black transition-colors disabled:opacity-30"
+            title="Zoom in"
+          >
+            <ZoomIn className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Highlights scroll area */}
+      <div className="flex-1 overflow-y-auto scrollbar-thin">
+        <div
+          className="mx-auto py-10 px-8 max-w-2xl"
+          style={{ fontSize: `${zoom}rem` }}
+        >
+          {/* Book header */}
+          <div className="mb-10 pb-8 border-b-2 border-black/8">
+            <p className="text-[0.6rem] font-bold text-gray-400 uppercase tracking-[0.25em] mb-3">Your highlights</p>
+            <h1
+              className="font-typewriter font-bold leading-tight text-black mb-1"
+              style={{ fontSize: `${1.4 * zoom}rem` }}
+            >
+              {book.title}
+            </h1>
+            <p className="text-gray-500" style={{ fontSize: `${0.8 * zoom}rem` }}>
+              {book.author}
+            </p>
+          </div>
+
+          {/* Highlight cards */}
+          {filtered.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <Search className="w-8 h-8 mx-auto mb-3 opacity-40" />
+              <p className="text-sm">No highlights match your search.</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {filtered.map((h, idx) => {
+                const isActive = hoveredCitationId === h.id;
+                return (
+                  <motion.div
+                    key={h.id}
+                    ref={isActive ? highlightedRef : null}
+                    animate={{
+                      backgroundColor: isActive ? "#FEF9C3" : "transparent",
+                      borderLeftColor: isActive ? "#FBBF24" : "transparent",
+                    }}
+                    transition={{ duration: 0.2 }}
+                    onMouseEnter={() => onHoverHighlight(h.id)}
+                    onMouseLeave={() => onHoverHighlight(null)}
+                    className="group relative pl-5 pr-3 py-4 rounded-r-lg border-l-4 cursor-default transition-all"
+                    style={{ borderLeftColor: isActive ? "#FBBF24" : "transparent" }}
+                  >
+                    {/* Highlight number */}
+                    <span
+                      className="absolute left-[-2px] top-4 text-[0.55rem] font-mono text-gray-300 group-hover:text-gray-400 transition-colors select-none"
+                      style={{ writingMode: "horizontal-tb", fontSize: `${0.6 * zoom}rem` }}
+                    >
+                      {idx + 1}
+                    </span>
+
+                    {/* Highlight mark – yellow strip behind text when active */}
+                    {isActive && (
+                      <motion.div
+                        layoutId="active-glow"
+                        className="absolute inset-0 bg-yellow-100/60 rounded-r-lg pointer-events-none"
+                      />
+                    )}
+
+                    <p
+                      className="relative text-gray-800 leading-[1.8] font-serif italic"
+                      style={{ fontSize: `${0.9 * zoom}rem` }}
+                    >
+                      &ldquo;{h.text}&rdquo;
+                    </p>
+                    {h.page && (
+                      <p
+                        className="relative mt-1.5 font-mono text-gray-400 not-italic"
+                        style={{ fontSize: `${0.65 * zoom}rem` }}
+                      >
+                        {h.page}
+                      </p>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="mt-16 pt-8 border-t border-black/8 text-center">
+            <p className="text-[0.65rem] text-gray-300 uppercase tracking-widest font-mono">
+              End of highlights · {highlights.length} passages
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Typing Indicator ────────────────────────────────────────
 function TypingIndicator() {
   return (
@@ -231,17 +400,39 @@ function TypingIndicator() {
   );
 }
 
-// ─── Main Chat Page ──────────────────────────────────────────
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "0",
-      role: "assistant",
-      content: OPENING_NUDGES[0],
-      timestamp: new Date(),
-      feedback: null,
-    },
-  ]);
+  const params = useParams();
+  const bookId = params.bookId as string;
+
+  // ── Real data ─────────────────────────────────────────────
+  const [book, setBook] = useState<BookData | null>(null);
+  const [highlights, setHighlights] = useState<HighlightCitation[]>([]);
+  const [loadingBook, setLoadingBook] = useState(true);
+
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (!user || !bookId) return;
+      const bookSnap = await getDoc(doc(db, "users", user.uid, "books", bookId));
+      if (!bookSnap.exists()) { setLoadingBook(false); return; }
+      const bookData = { id: bookSnap.id, ...(bookSnap.data() as Omit<BookData, "id">) };
+      setBook(bookData);
+      const hSnap = await getDocs(
+        query(collection(db, "users", user.uid, "books", bookId, "highlights"), orderBy("position"), limit(50))
+      );
+      setHighlights(
+        hSnap.docs.map((d) => ({
+          id: d.id,
+          text: d.data().content as string,
+          page: d.data().pageRef ? `p.${d.data().pageRef}` : "",
+        }))
+      );
+      setLoadingBook(false);
+    });
+    return () => unsubAuth();
+  }, [bookId]);
+
+  // ── Chat state ────────────────────────────────────────────
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [situation, setSituation] = useState("");
@@ -254,66 +445,55 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll
+  // Set opening message once book loads
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
+    if (!book) return;
+    setMessages([{
+      id: "0",
+      role: "assistant",
+      content: `Hey! I've read through all **${book.highlightCount}** of your highlights from **${book.title}**.\n\nBefore we dive in — what's going on in your life right now that made you want to revisit this book?`,
+      timestamp: new Date(),
+      feedback: null,
+    }]);
+  }, [book]);
 
-  const simulateAIResponse = async (userMessageText: string) => {
+  const callChatAPI = async (userText: string) => {
     setIsTyping(true);
     setShowSuggested(false);
-    
-    await new Promise((r) => setTimeout(r, 1000));
-    setIsTyping(false);
-
-    const responses = [
-      {
-        content: `That's a really important thing to be working through. The Psychology of Money speaks directly to this.\n\nMorgan Housel's core argument is that our behavior around money matters far more than our knowledge about it [c1]. Most people who struggle financially don't lack information — they lack a **behavioral system** that's built for real human psychology, not theoretical rationality.\n\nAlso, remember that time is your greatest asset [c2]. For your situation, I would focus on the habits.`,
-        citations: [SAMPLE_HIGHLIGHTS[2], SAMPLE_HIGHLIGHTS[3]],
-      },
-      {
-        content: `Great question. The book's central idea on this is that **wealth is what you don't see** — it's the cars not purchased, the clothes not bought [c1]. Most people fall into the trap of confusing spending with success.\n\nIt takes emotional discipline not to signal wealth.`,
-        citations: [SAMPLE_HIGHLIGHTS[4]],
-      },
-      {
-        content: `I love that you're thinking critically about this. Let me steelman Housel's position using your highlights, then we can poke holes in it.\n\nHis case: **Behavior beats intelligence** in investing [c1]. The smart person who panic-sells in a downturn underperforms the average person who holds through it. Emotional discipline is the real alpha.\n\nAnd you always need a margin of safety because plans fail [c2].`,
-        citations: [SAMPLE_HIGHLIGHTS[0], SAMPLE_HIGHLIGHTS[1]],
-      },
-    ];
-
-    const chosenResponse = responses[Math.floor(Math.random() * responses.length)];
     const messageId = Date.now().toString();
-
     setMessages((prev) => [
       ...prev,
-      {
-        id: messageId,
-        role: "assistant",
-        content: "",
-        citations: chosenResponse.citations,
-        timestamp: new Date(),
-        isStreaming: true,
-      },
+      { id: messageId, role: "assistant", content: "", citations: [], timestamp: new Date(), isStreaming: true },
     ]);
-
-    let streamedContent = "";
-    const chunks = chosenResponse.content.match(/(.{1,5})/g) || [];
-    
-    for (const chunk of chunks) {
-      await new Promise((r) => setTimeout(r, 20 + Math.random() * 30));
-      streamedContent += chunk;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId ? { ...m, content: streamedContent } : m
-        )
-      );
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookId,
+          message: userText,
+          context: savedSituations.join("\n"),
+          history: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+      if (!res.ok || !res.body) throw new Error("Chat API failed");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        accumulated += decoder.decode(value, { stream: true });
+        setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, content: accumulated } : m)));
+      }
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, isStreaming: false } : m)));
+    } catch {
+      setMessages((prev) => prev.map((m) =>
+        m.id === messageId ? { ...m, content: "Sorry, I couldn't respond right now. Please try again.", isStreaming: false } : m
+      ));
+    } finally {
+      setIsTyping(false);
     }
-
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === messageId ? { ...m, isStreaming: false } : m
-      )
-    );
   };
 
   const handleSend = async () => {
@@ -328,9 +508,9 @@ export default function ChatPage() {
     const currentInput = input;
     setInput("");
     inputRef.current?.focus();
-    
-    await simulateAIResponse(currentInput);
+    await callChatAPI(currentInput);
   };
+
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -351,6 +531,24 @@ export default function ChatPage() {
     inputRef.current?.focus();
   };
 
+  const suggestedPrompts = book ? [
+    `What are the 3 most important ideas from ${book.title}?`,
+    `Quiz me on a key concept from this book`,
+    `How can I apply this book to my daily life?`,
+  ] : [];
+
+  if (loadingBook) {
+    return <div className="flex h-[calc(100dvh-73px)] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-gray-300" /></div>;
+  }
+  if (!book) {
+    return (
+      <div className="flex h-[calc(100dvh-73px)] items-center justify-center flex-col gap-4">
+        <BookOpen className="w-10 h-10 text-gray-300" />
+        <p className="text-gray-500">Book not found.</p>
+        <Link href="/dashboard" className="btn-primary text-sm px-6 py-2">Back to Library</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[calc(100dvh-73px)] overflow-hidden bg-white">
@@ -390,17 +588,17 @@ export default function ChatPage() {
 
                 <div className="space-y-2">
                   <h3 className="font-bold font-typewriter text-2xl text-black leading-tight pr-10">
-                    {MOCK_BOOK.title}
+                    {book.title}
                   </h3>
-                  <p className="text-sm text-gray-400 font-medium">{MOCK_BOOK.author}</p>
+                  <p className="text-sm text-gray-400 font-medium">{book.author}</p>
                 </div>
                 
                 <div className="flex flex-wrap items-center gap-2 mt-6">
-                  <span className="bg-black/5 text-gray-600 text-[10px] uppercase font-bold tracking-widest px-3 py-1.5 rounded-md">
-                    {MOCK_BOOK.category}
+                  <span className="bg-black/5 text-gray-600 text-[10px] uppercase font-bold tracking-widest px-3 py-1.5 rounded-md capitalize">
+                    {book.category}
                   </span>
                   <span className="bg-black/5 text-gray-600 text-[10px] uppercase font-bold tracking-widest px-3 py-1.5 rounded-md">
-                    {MOCK_BOOK.highlightCount} highlights
+                    {book.highlightCount} highlights
                   </span>
                 </div>
               </div>
@@ -411,7 +609,7 @@ export default function ChatPage() {
                   Highlights
                 </p>
                 <div className="space-y-4">
-                  {SAMPLE_HIGHLIGHTS.map((h) => {
+                  {highlights.map((h) => {
                     const isHovered = hoveredCitationId === h.id;
                     return (
                       <motion.div
@@ -435,15 +633,13 @@ export default function ChatPage() {
               <div className="p-6 border-t border-black/10">
                 <button
                   onClick={() => {
-                    setMessages([
-                      {
+                    setMessages([{
                         id: "0",
                         role: "assistant",
-                        content: OPENING_NUDGES[Math.floor(Math.random() * OPENING_NUDGES.length)],
+                        content: `Hey! I've read through all **${book.highlightCount}** of your highlights from **${book.title}**.\n\nBefore we dive in — what's going on in your life right now that made you want to revisit this book?`,
                         timestamp: new Date(),
                         feedback: null,
-                      },
-                    ]);
+                    }]);
                     setShowSuggested(true);
                   }}
                   className="group w-full bg-white border border-black/10 hover:border-black text-[11px] font-bold uppercase tracking-widest py-3 rounded-full flex items-center justify-center gap-2.5 transition-all shadow-sm hover:shadow-md"
@@ -463,30 +659,19 @@ export default function ChatPage() {
               className="text-[10px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap rotate-180"
               style={{ writingMode: 'vertical-rl' }}
             >
-              Highlights — {MOCK_BOOK.highlightCount}
+              Highlights — {book.highlightCount}
             </span>
           </div>
         )}
       </motion.div>
 
-      {/* ─── Column 2: PDF / Document Viewer ──────────── */}
-      <div className="flex-1 flex flex-col bg-gray-50 border-r border-black/10 min-w-0 overflow-hidden">
-
-        {/* PDF Placeholder */}
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center max-w-sm">
-            <div className="w-16 h-16 bg-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <BookOpen className="w-8 h-8 text-gray-400" />
-            </div>
-            <h3 className="font-typewriter font-bold text-base text-gray-700 mb-2">
-              Document Viewer
-            </h3>
-            <p className="text-sm text-gray-400 leading-relaxed">
-              Your uploaded PDF will appear here. Highlighted passages will be connected to the AI chat on the right.
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* ─── Column 2: Highlight Viewer ──────────── */}
+      <HighlightViewer
+        highlights={highlights}
+        hoveredCitationId={hoveredCitationId}
+        onHoverHighlight={setHoveredCitationId}
+        book={book}
+      />
 
       <div className="w-[420px] flex-shrink-0 flex flex-col bg-white overflow-hidden relative border-l border-black/10">
         <div className="flex flex-col h-full">
@@ -515,7 +700,7 @@ export default function ChatPage() {
                       transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
                       className="flex flex-wrap gap-2 mb-3"
                     >
-                      {SUGGESTED_PROMPTS.map((p, i) => (
+                      {suggestedPrompts.map((p, i) => (
                         <motion.button
                           whileTap={{ scale: 0.95 }}
                           key={i}

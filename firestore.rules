@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users can only read/write their own profile
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // Books belong to the user
+      match /books/{bookId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+
+        // Highlights inside each book
+        match /highlights/{highlightId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+
+        // Chat sessions inside each book
+        match /chat_sessions/{sessionId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+
+          // Messages inside each session
+          match /messages/{messageId} {
+            allow read, write: if request.auth != null && request.auth.uid == userId;
+          }
+        }
+      }
+    }
+  }
+}

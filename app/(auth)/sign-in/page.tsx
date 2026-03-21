@@ -2,8 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, User, Lock, ArrowRight } from "lucide-react";
+
+import { auth } from "@/lib/firebase/client";
+import {
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+} from "firebase/auth";
 
 export default function SignInPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -12,16 +20,52 @@ export default function SignInPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
+  const router = useRouter();
+
+  // Exchange Firebase ID token for a secure server session cookie
+  const createSessionAndRedirect = async (user: import("firebase/auth").User) => {
+    const idToken = await user.getIdToken();
+    const res = await fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+
+    if (res.ok) {
+      router.push("/dashboard");
+    } else {
+      setError("Failed to create secure session.");
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-    // TODO: Supabase auth integration
-    setTimeout(() => {
+    
+    try {
+      const { user } = await signInWithEmailAndPassword(auth, email, password);
+      await createSessionAndRedirect(user);
+    } catch (err: any) {
+      console.error(err);
+      setError("Invalid email or password.");
       setLoading(false);
-      // redirect to dashboard
-      window.location.href = "/dashboard";
-    }, 1000);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      const { user } = await signInWithPopup(auth, provider);
+      await createSessionAndRedirect(user);
+    } catch (err: any) {
+      console.error(err);
+      setError("Google sign-in failed.");
+      setLoading(false);
+    }
   };
 
   return (
@@ -150,7 +194,9 @@ export default function SignInPage() {
                 {/* Google OAuth */}
                 <button
                   type="button"
-                  className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-black/20 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors"
+                  onClick={handleGoogleSignIn}
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-black/20 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>

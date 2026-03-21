@@ -2,10 +2,13 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { BookmarkIcon, LogOut, Upload, Search, Bell, Settings } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { motion, AnimatePresence } from "framer-motion";
+
+import { auth } from "@/lib/firebase/client";
+import { signOut } from "firebase/auth";
 
 const categories = ["Finance", "Intellect", "Occupation", "Physique", "Social", "Spiritual"];
 
@@ -36,12 +39,19 @@ const mockBookmarks = [
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [activeCategory, setActiveCategory] = useState("Finance");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const handleSignOut = async () => {
+    await signOut(auth);
+    await fetch("/api/auth/session", { method: "DELETE" });
+    router.push("/sign-in");
+  };
 
   // Layout states based on pathname
   const isDashboardGrid = pathname === "/dashboard";
@@ -115,12 +125,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         </Link>
                       </div>
                       <div className="px-6 py-4 border-t border-black/10">
-                        <Link href="/">
-                          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 transition-colors text-sm font-medium text-red-600">
-                            <LogOut className="w-4 h-4" />
-                            Sign Out
-                          </button>
-                        </Link>
+                        <button
+                          onClick={handleSignOut}
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 transition-colors text-sm font-medium text-red-600"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          Sign Out
+                        </button>
                       </div>
                     </div>
                   </SheetContent>
