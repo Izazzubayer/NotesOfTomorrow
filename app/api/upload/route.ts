@@ -1,11 +1,12 @@
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { parseGooglePlayBook, extractGooglePlayMeta } from "@/lib/parsers/googlePlayParser";
 import { parseKindleExport, extractKindleMeta } from "@/lib/parsers/kindleParser";
+import { generateEmbeddingsBatch } from "@/lib/ai/embeddings";
 import { FieldValue } from "firebase-admin/firestore";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // ── Google Books API: fetch cover + category ──────────────────────────────
 async function fetchBookMetadata(
@@ -132,26 +133,43 @@ export async function POST(request: Request) {
     createdAt: FieldValue.serverTimestamp(),
   });
 
-  // 6. Store highlights as plain text (no embeddings for now — keyword search in chat)
+  // 6. Store highlights with embeddings (10 at a time → free tier safe)
   try {
     const highlightsRef = bookRef.collection("highlights");
-    const BATCH_SIZE = 400; // Firestore batch limit is 500 ops
+    const EMBED_BATCH = 10; // Google AI free tier: 1500 req/min — 10 at a time is very safe
 
-    for (let i = 0; i < highlights.length; i += BATCH_SIZE) {
-      const chunk = highlights.slice(i, i + BATCH_SIZE);
-      const batch = adminDb.batch();
+    for (let i = 0; i < highlights.length; i += EMBED_BATCH) {
+      const chunk = highlights.slice(i, i + EMBED_BATCH);
+
+      // Generate embeddings for this chunk (parallel within the chunk)
+      let embeddings: number[][] = [];
+      try {
+        embeddings = await generateEmbeddingsBatch(chunk);
+      } catch (embErr) {
+        console.warn(`Embedding batch ${i}–${i + EMBED_BATCH} failed, storing without vectors:`, embErr);
+        // Fall back: store without embeddings — keyword search still works
+        embeddings = chunk.map(() => []);
+      }
+
+      // Write this chunk to Firestore as one batch
+      const firestoreBatch = adminDb.batch();
       chunk.forEach((content, j) => {
         const ref = highlightsRef.doc();
-        batch.set(ref, {
+        const docData: Record<string, unknown> = {
           content,
           position: i + j,
           pageRef: null,
           tags: [],
           isBookmarked: false,
           createdAt: FieldValue.serverTimestamp(),
-        });
+        };
+        // Only store the vector field if we actually got an embedding
+        if (embeddings[j]?.length > 0) {
+          docData.embedding = FieldValue.vector(embeddings[j]);
+        }
+        firestoreBatch.set(ref, docData);
       });
-      await batch.commit();
+      await firestoreBatch.commit();
     }
 
     await bookRef.update({ status: "ready", highlightCount: highlights.length });

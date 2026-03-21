@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Send,
   ThumbsUp,
@@ -32,7 +34,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { auth, db } from "@/lib/firebase/client";
-import { doc, collection, getDoc, getDocs, orderBy, query, limit } from "firebase/firestore";
+import {
+  doc, collection, getDoc, getDocs,
+  addDoc, updateDoc,
+  orderBy, query, limit,
+  serverTimestamp, Timestamp,
+} from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
 // ─── Types ──────────────────────────────────────────────────
@@ -63,59 +70,125 @@ type BookData = {
   coverUrl?: string;
 };
 
-// ─── Formatting Helper ───────────────────────────────────────
-function formatAIResponse(
-  content: string,
-  citations: HighlightCitation[],
-  onHoverCitation: (id: string | null) => void
-) {
-  const parts = content.split(/(\[c\d+\]|\*\*.+?\*\*)/g);
+// ─── AI Markdown Renderer ────────────────────────────────────
+// Renders the AI response using react-markdown so **bold**, _italic_,
+// numbered lists, etc. all work. Also intercepts [1] [2] citation markers
+// and makes them hoverable highlight chips.
+function AIMarkdown({
+  content,
+  highlights,
+  onHoverCitation,
+  isStreaming,
+}: {
+  content: string;
+  highlights: HighlightCitation[];
+  onHoverCitation: (id: string | null) => void;
+  isStreaming?: boolean;
+}) {
+  // Replace [N], [N, M], [N, M, P] citation markers with placeholders.
+  // Gemini often writes [1, 2] to cite multiple highlights at once.
+  const processed = content.replace(/\[(\d+(?:,\s*\d+)*)\]/g, (_, nums: string) => {
+    return nums
+      .split(",")
+      .map((n) => n.trim())
+      .map((num) => {
+        const idx = parseInt(num, 10) - 1;
+        const h = highlights[idx];
+        return h ? `__CIT_${h.id}__${num}__END__` : `[${num}]`;
+      })
+      .join("");
+  });
 
+  return (
+    <div className="prose max-w-none leading-relaxed">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          p({ children }) {
+            return <p>{processChildren(children, highlights, onHoverCitation)}</p>;
+          },
+          li({ children }) {
+            return <li>{processChildren(children, highlights, onHoverCitation)}</li>;
+          },
+        }}
+      >
+        {processed}
+      </ReactMarkdown>
+      {isStreaming && (
+        <span className="inline-block w-[2px] h-[1em] bg-yellow-400 animate-pulse ml-0.5 align-middle rounded-sm" />
+      )}
+    </div>
+  );
+}
+
+/** Walk react children, swap __CIT_...__ tokens for citation chips */
+function processChildren(
+  children: React.ReactNode,
+  highlights: HighlightCitation[],
+  onHoverCitation: (id: string | null) => void
+): React.ReactNode {
+  return Array.isArray(children)
+    ? children.map((child, i) =>
+        typeof child === "string"
+          ? processTextNode(child, highlights, onHoverCitation, i)
+          : child
+      )
+    : typeof children === "string"
+    ? processTextNode(children, highlights, onHoverCitation, 0)
+    : children;
+}
+
+function processTextNode(
+  text: string,
+  highlights: HighlightCitation[],
+  onHoverCitation: (id: string | null) => void,
+  baseKey: number
+): React.ReactNode {
+  const parts = text.split(/(__CIT_[^_]+__\d+__END__)/);
+  if (parts.length === 1) return text;
   return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return <strong key={i}>{part.slice(2, -2)}</strong>;
-    }
-    const citationMatch = part.match(/\[c(\d+)\]/);
-    if (citationMatch) {
-      const idx = parseInt(citationMatch[1], 10) - 1;
-      const highlight = citations[idx];
-      if (highlight) {
-        return (
-          <sup
-            key={i}
-            onMouseEnter={() => onHoverCitation(highlight.id)}
-            onMouseLeave={() => onHoverCitation(null)}
-            className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-yellow-100 text-yellow-700 text-[10px] font-bold cursor-pointer hover:bg-yellow-400 hover:text-black transition-colors mx-0.5"
-          >
-            {idx + 1}
-          </sup>
-        );
-      }
-    }
+    const m = part.match(/^__CIT_(.+?)__(\d+)__END__$/);
+    if (!m) return <span key={`${baseKey}-${i}`}>{part}</span>;
+    const [, hId, num] = m;
+    const h = highlights.find((h) => h.id === hId);
+    if (!h) return <span key={`${baseKey}-${i}`}>[{num}]</span>;
     return (
-      <span key={i}>
-        {part.split("\n").map((line, j, arr) => (
-          <span key={j}>
-            {line}
-            {j < arr.length - 1 && <br />}
-          </span>
-        ))}
-      </span>
+      <sup
+        key={`${baseKey}-${i}`}
+        onMouseEnter={() => onHoverCitation(hId)}
+        onMouseLeave={() => onHoverCitation(null)}
+        onClick={() => onHoverCitation(hId)}
+        title={h.text.slice(0, 120) + (h.text.length > 120 ? "…" : "")}
+        className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-yellow-200 text-yellow-900 text-[9px] font-bold cursor-pointer hover:bg-yellow-400 hover:text-black transition-all mx-0.5 select-none shadow-sm"
+      >
+        {num}
+      </sup>
     );
   });
 }
 
 // ─── Message Bubble ──────────────────────────────────────────
+const ERROR_TEXT = "Sorry, I couldn't respond right now. Please try again.";
+
 function MessageBubble({
   message,
   onFeedback,
   onHoverCitation,
+  onRetry,
 }: {
   message: Message;
   onFeedback: (id: string, feedback: "helpful" | "unhelpful") => void;
   onHoverCitation: (id: string | null) => void;
+  onRetry: () => void;
 }) {
   const isUser = message.role === "user";
+  const isError = !message.isStreaming && message.content === ERROR_TEXT;
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   if (isUser) {
     return (
@@ -144,14 +217,29 @@ function MessageBubble({
         <span className="text-xs font-bold text-black">Notes of Tomorrow</span>
       </div>
       <div className="chat-bubble-ai">
-        <div className="text-sm leading-relaxed">
-          {formatAIResponse(message.content, message.citations || [], onHoverCitation)}
-          {message.isStreaming && <span className="inline-block w-1.5 h-4 bg-yellow-400 animate-pulse ml-1 align-middle" />}
+          <AIMarkdown
+            content={message.content}
+            highlights={message.citations || []}
+            onHoverCitation={onHoverCitation}
+            isStreaming={message.isStreaming}
+          />
         </div>
-      </div>
 
-      {/* Feedback & Citations */}
-      {!message.isStreaming && (
+      {/* Retry button on error */}
+      {isError && !message.isStreaming && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pl-2 mt-1">
+          <button
+            onClick={onRetry}
+            className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 hover:text-black bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-full transition-all"
+          >
+            <RotateCcw className="w-3 h-3" />
+            Retry
+          </button>
+        </motion.div>
+      )}
+
+      {/* Feedback & Citations & Copy — only on non-error messages */}
+      {!message.isStreaming && !isError && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-wrap items-center gap-3 mt-1 pl-2">
           {message.citations?.map((c, i) => (
             <button
@@ -165,6 +253,10 @@ function MessageBubble({
             </button>
           ))}
           <div className="flex items-center gap-1 ml-auto">
+            {/* Copy */}
+            <button onClick={handleCopy} title="Copy" className="p-1 rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-700">
+              {copied ? <span className="text-[9px] font-bold text-green-500 px-1">Copied!</span> : <FileText className="w-3.5 h-3.5" />}
+            </button>
             {message.feedback === undefined || message.feedback === null ? (
               <>
                 <button
@@ -182,7 +274,7 @@ function MessageBubble({
               </>
             ) : (
               <span className="text-[10px] text-gray-400">
-                {message.feedback === "helpful" ? "Helpful" : "Unhelpful"}
+                {message.feedback === "helpful" ? "Helpful ✓" : "Unhelpful"}
               </span>
             )}
           </div>
@@ -191,6 +283,7 @@ function MessageBubble({
     </motion.div>
   );
 }
+
 
 // ─── Highlight Viewer (Column 2) ─────────────────────────────
 function HighlightViewer({
@@ -409,15 +502,28 @@ export default function ChatPage() {
   const [highlights, setHighlights] = useState<HighlightCitation[]>([]);
   const [loadingBook, setLoadingBook] = useState(true);
 
+  // Firestore session refs (set once auth resolves)
+  const [uid, setUid] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const uidRef = useRef<string | null>(null);
+
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
       if (!user || !bookId) return;
+
+      uidRef.current = user.uid;
+      setUid(user.uid);
+
+      // 1. Load book
       const bookSnap = await getDoc(doc(db, "users", user.uid, "books", bookId));
       if (!bookSnap.exists()) { setLoadingBook(false); return; }
       const bookData = { id: bookSnap.id, ...(bookSnap.data() as Omit<BookData, "id">) };
       setBook(bookData);
+
+      // 2. Load all highlights (no limit)
       const hSnap = await getDocs(
-        query(collection(db, "users", user.uid, "books", bookId, "highlights"), orderBy("position"), limit(50))
+        query(collection(db, "users", user.uid, "books", bookId, "highlights"), orderBy("position"))
       );
       setHighlights(
         hSnap.docs.map((d) => ({
@@ -426,6 +532,53 @@ export default function ChatPage() {
           page: d.data().pageRef ? `p.${d.data().pageRef}` : "",
         }))
       );
+
+      // 3. Load or create chat session
+      const sessionsRef = collection(db, "users", user.uid, "books", bookId, "chat_sessions");
+      const sessSnap = await getDocs(
+        query(sessionsRef, orderBy("createdAt", "desc"), limit(1))
+      );
+
+      let sid: string;
+      let existingMessages: Message[] = [];
+
+      if (!sessSnap.empty) {
+        sid = sessSnap.docs[0].id;
+        const msgsSnap = await getDocs(
+          query(
+            collection(db, "users", user.uid, "books", bookId, "chat_sessions", sid, "messages"),
+            orderBy("timestamp")
+          )
+        );
+        existingMessages = msgsSnap.docs.map((d) => ({
+          id: d.id,
+          role: d.data().role as "user" | "assistant",
+          content: d.data().content as string,
+          citations: (d.data().citations ?? []) as HighlightCitation[],
+          feedback: d.data().feedback ?? null,
+          timestamp: (d.data().timestamp as Timestamp)?.toDate() ?? new Date(),
+        }));
+      } else {
+        const newSess = await addDoc(sessionsRef, { createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        sid = newSess.id;
+      }
+
+      sessionIdRef.current = sid;
+      setSessionId(sid);
+
+      if (existingMessages.length > 0) {
+        setMessages(existingMessages);
+        setShowSuggested(false);
+      } else {
+        setMessages([{
+          id: "opening",
+          role: "assistant",
+          content: `Hey! I've read through all **${bookData.highlightCount}** of your highlights from **${bookData.title}**.\n\nBefore we dive in — what's going on in your life right now that made you want to revisit this book?`,
+          timestamp: new Date(),
+          feedback: null,
+        }]);
+      }
+
       setLoadingBook(false);
     });
     return () => unsubAuth();
@@ -435,32 +588,38 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [lastUserMessage, setLastUserMessage] = useState<string>("");
   const [situation, setSituation] = useState("");
   const [savedSituations, setSavedSituations] = useState<string[]>([]);
   const [situationExpanded, setSituationExpanded] = useState(false);
   const [showSuggested, setShowSuggested] = useState(true);
   const [hoveredCitationId, setHoveredCitationId] = useState<string | null>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Set opening message once book loads
+  // ── Auto-scroll: scroll to bottom on new messages, but only if user hasn't scrolled up ──
   useEffect(() => {
-    if (!book) return;
-    setMessages([{
-      id: "0",
-      role: "assistant",
-      content: `Hey! I've read through all **${book.highlightCount}** of your highlights from **${book.title}**.\n\nBefore we dive in — what's going on in your life right now that made you want to revisit this book?`,
-      timestamp: new Date(),
-      feedback: null,
-    }]);
-  }, [book]);
+    if (!userScrolledUp) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, userScrolledUp]);
+
+  // Track if user has manually scrolled up so we don't hijack their scroll position
+  const handleChatScroll = useCallback(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    setUserScrolledUp(!atBottom);
+  }, []);
 
   const callChatAPI = async (userText: string) => {
     setIsTyping(true);
     setShowSuggested(false);
-    const messageId = Date.now().toString();
+    const messageId = crypto.randomUUID();
     setMessages((prev) => [
       ...prev,
       { id: messageId, role: "assistant", content: "", citations: [], timestamp: new Date(), isStreaming: true },
@@ -477,16 +636,61 @@ export default function ChatPage() {
         }),
       });
       if (!res.ok || !res.body) throw new Error("Chat API failed");
+
+      // ── Read citations from header BEFORE streaming starts ──
+      let citations: HighlightCitation[] = [];
+      try {
+        const raw = res.headers.get("X-Cited-Highlights");
+        if (raw) {
+          citations = JSON.parse(raw) as HighlightCitation[];
+          // Attach citations immediately so chips are visible from the first token
+          setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, citations } : m));
+        }
+      } catch { /* non-fatal, citations remain [] */ }
+
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let accumulated = "";
+      let rafPending = false;
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         accumulated += decoder.decode(value, { stream: true });
-        setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, content: accumulated } : m)));
+
+        // Throttle React re-renders to once per animation frame (~60fps)
+        if (!rafPending) {
+          rafPending = true;
+          const snapshot = accumulated;
+          requestAnimationFrame(() => {
+            setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, content: snapshot } : m)));
+            rafPending = false;
+          });
+        }
       }
-      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, isStreaming: false } : m)));
+      // Final update with complete content
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, content: accumulated, isStreaming: false } : m)));
+
+      // ── Persist AI message to Firestore (fire-and-forget) ──
+      const sid = sessionIdRef.current;
+      const uid = uidRef.current;
+      if (sid && uid) {
+        addDoc(
+          collection(db, "users", uid, "books", bookId, "chat_sessions", sid, "messages"),
+          {
+            role: "assistant",
+            content: accumulated,
+            citations: citations.map((c) => ({ id: c.id, text: c.text, page: c.page })),
+            feedback: null,
+            timestamp: serverTimestamp(),
+          }
+        ).catch(console.error);
+        // Update session's updatedAt
+        updateDoc(
+          doc(db, "users", uid, "books", bookId, "chat_sessions", sid),
+          { updatedAt: serverTimestamp() }
+        ).catch(console.error);
+      }
     } catch {
       setMessages((prev) => prev.map((m) =>
         m.id === messageId ? { ...m, content: "Sorry, I couldn't respond right now. Please try again.", isStreaming: false } : m
@@ -496,18 +700,39 @@ export default function ChatPage() {
     }
   };
 
+  // ── Retry: re-send the last user message ──
+  const handleRetry = useCallback(() => {
+    if (!lastUserMessage || isTyping) return;
+    // Remove the last (failed) assistant message
+    setMessages((prev) => prev.filter((_, i) => i < prev.length - 1 || prev[prev.length - 1].role !== "assistant"));
+    callChatAPI(lastUserMessage);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastUserMessage, isTyping]);
+
   const handleSend = async () => {
     if (!input.trim() || isTyping) return;
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       role: "user",
       content: input.trim(),
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, userMessage]);
     const currentInput = input;
+    setLastUserMessage(currentInput);
     setInput("");
     inputRef.current?.focus();
+
+    // ── Persist user message to Firestore (fire-and-forget) ──
+    const sid = sessionIdRef.current;
+    const uid = uidRef.current;
+    if (sid && uid) {
+      addDoc(
+        collection(db, "users", uid, "books", bookId, "chat_sessions", sid, "messages"),
+        { role: "user", content: currentInput, timestamp: serverTimestamp(), feedback: null, citations: [] }
+      ).catch(console.error);
+    }
+
     await callChatAPI(currentInput);
   };
 
@@ -520,9 +745,16 @@ export default function ChatPage() {
   };
 
   const handleFeedback = (id: string, feedback: "helpful" | "unhelpful") => {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, feedback } : m))
-    );
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, feedback } : m)));
+    // Persist to Firestore  
+    const sid = sessionIdRef.current;
+    const uid = uidRef.current;
+    if (sid && uid) {
+      updateDoc(
+        doc(db, "users", uid, "books", bookId, "chat_sessions", sid, "messages", id),
+        { feedback }
+      ).catch(console.error);
+    }
   };
 
   const handleSuggestedPrompt = (prompt: string) => {
@@ -677,12 +909,28 @@ export default function ChatPage() {
         <div className="flex flex-col h-full">
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+              <div
+                ref={chatScrollRef}
+                onScroll={handleChatScroll}
+                className="flex-1 overflow-y-auto px-5 py-5 space-y-5"
+              >
                 {messages.map((msg) => (
-                  <MessageBubble key={msg.id} message={msg} onFeedback={handleFeedback} onHoverCitation={setHoveredCitationId} />
+                  <MessageBubble
+                    key={msg.id}
+                    message={msg}
+                    onFeedback={handleFeedback}
+                    onHoverCitation={setHoveredCitationId}
+                    onRetry={handleRetry}
+                  />
                 ))}
                 <AnimatePresence>
-                  {isTyping && !messages[messages.length-1].isStreaming && <TypingIndicator />}
+                  {/* Show typing indicator only during the gap before first token arrives */}
+                  {isTyping &&
+                    messages.length > 0 &&
+                    messages[messages.length - 1]?.isStreaming &&
+                    messages[messages.length - 1]?.content === "" && (
+                    <TypingIndicator />
+                  )}
                 </AnimatePresence>
                 <div ref={messagesEndRef} className="h-4" />
               </div>

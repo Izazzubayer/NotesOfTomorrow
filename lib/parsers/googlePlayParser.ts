@@ -1,5 +1,19 @@
 import mammoth from "mammoth";
 
+// Known Google Play Books metadata lines to strip — these are never real highlights
+const GOOGLE_PLAY_NOISE = [
+  /^this document is overwritten/i,
+  /^you should make a copy/i,
+  /^annotations by color/i,
+  /^\d+ (yellow|green|red|blue|purple) notes/i,
+  /notes?\s*•\s*\d+/i,
+  /created by .+ last synced/i,
+  /last synced/i,
+  /highlights from:/i,
+  /^highlights?$/i,
+  /^notes?$/i,
+];
+
 /** Extract highlights as text strings from a Google Play .docx export */
 export async function parseGooglePlayBook(buffer: Buffer): Promise<string[]> {
   const { value } = await mammoth.extractRawText({ buffer });
@@ -8,12 +22,13 @@ export async function parseGooglePlayBook(buffer: Buffer): Promise<string[]> {
     .map((l) => l.trim())
     .filter(Boolean);
 
-  return lines.filter(
-    (line) =>
-      line.length > 15 &&
-      !line.match(/^\d+$/) &&
-      !line.match(/^Page \d+/i)
-  );
+  return lines.filter((line) => {
+    if (line.length < 30) return false;             // too short to be a real highlight
+    if (line.match(/^\d+$/)) return false;           // just a page number
+    if (line.match(/^Page \d+/i)) return false;      // "Page 12" headers
+    if (GOOGLE_PLAY_NOISE.some((re) => re.test(line))) return false;
+    return true;
+  });
 }
 
 /**

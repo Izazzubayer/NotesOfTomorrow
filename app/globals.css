@@ -379,3 +379,21 @@
 .delay-300 { animation-delay: 300ms; }
 .delay-400 { animation-delay: 400ms; }
 .delay-500 { animation-delay: 500ms; }
+
+/* ─── AI Response Prose Styles ──────────────────────────────── */
+.prose { font-size: 0.875rem; line-height: 1.65; color: #1a1a1a; }
+.prose p { margin-top: 0.55em; margin-bottom: 0.55em; }
+.prose p:first-child { margin-top: 0; }
+.prose p:last-child { margin-bottom: 0; }
+.prose strong { font-weight: 700; color: #000; }
+.prose em { font-style: italic; }
+.prose ol { list-style-type: decimal; padding-left: 1.4em; margin: 0.6em 0; }
+.prose ul { list-style-type: disc; padding-left: 1.4em; margin: 0.6em 0; }
+.prose li { margin: 0.25em 0; }
+.prose h1,.prose h2,.prose h3 { font-weight: 700; margin: 0.75em 0 0.35em; }
+.prose blockquote { border-left: 3px solid #ffba00; padding-left: 0.8em; color: #555; margin: 0.6em 0; font-style: italic; }
+.prose code { background: #f4f4f4; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.85em; }
+
+/* Smooth fade-in for streaming text words */
+@keyframes streamFade { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
+.prose-streaming > * { animation: streamFade 0.15s ease-out; }
