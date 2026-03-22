@@ -31,8 +31,10 @@ import {
   ZoomOut,
   Search,
   X,
+  Menu,
 } from "lucide-react";
 import Link from "next/link";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { auth, db } from "@/lib/firebase/client";
 import {
   doc, collection, getDoc, getDocs,
@@ -59,6 +61,12 @@ type Message = {
   feedback?: "helpful" | "unhelpful" | null;
   timestamp: Date;
   isStreaming?: boolean;
+};
+
+type ChatSession = {
+  id: string;
+  updatedAt: Date;
+  savedSituations: string[];
 };
 
 type BookData = {
@@ -314,7 +322,7 @@ function HighlightViewer({
   }, [hoveredCitationId]);
 
   return (
-    <div className="flex-1 flex flex-col bg-[#F7F6F2] border-r border-black/10 min-w-0 overflow-hidden">
+    <div className="hidden lg:flex flex-1 flex-col bg-[#F7F6F2] border-r border-black/10 min-w-0 overflow-hidden">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-black/8 bg-white/80 backdrop-blur-sm flex-shrink-0">
         <div className="flex items-center gap-1">
@@ -502,89 +510,14 @@ export default function ChatPage() {
   const [highlights, setHighlights] = useState<HighlightCitation[]>([]);
   const [loadingBook, setLoadingBook] = useState(true);
 
-  // Firestore session refs (set once auth resolves)
+  // Firestore session refs 
   const [uid, setUid] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const uidRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, async (user) => {
-      if (!user || !bookId) return;
-
-      uidRef.current = user.uid;
-      setUid(user.uid);
-
-      // 1. Load book
-      const bookSnap = await getDoc(doc(db, "users", user.uid, "books", bookId));
-      if (!bookSnap.exists()) { setLoadingBook(false); return; }
-      const bookData = { id: bookSnap.id, ...(bookSnap.data() as Omit<BookData, "id">) };
-      setBook(bookData);
-
-      // 2. Load all highlights (no limit)
-      const hSnap = await getDocs(
-        query(collection(db, "users", user.uid, "books", bookId, "highlights"), orderBy("position"))
-      );
-      setHighlights(
-        hSnap.docs.map((d) => ({
-          id: d.id,
-          text: d.data().content as string,
-          page: d.data().pageRef ? `p.${d.data().pageRef}` : "",
-        }))
-      );
-
-      // 3. Load or create chat session
-      const sessionsRef = collection(db, "users", user.uid, "books", bookId, "chat_sessions");
-      const sessSnap = await getDocs(
-        query(sessionsRef, orderBy("createdAt", "desc"), limit(1))
-      );
-
-      let sid: string;
-      let existingMessages: Message[] = [];
-
-      if (!sessSnap.empty) {
-        sid = sessSnap.docs[0].id;
-        const msgsSnap = await getDocs(
-          query(
-            collection(db, "users", user.uid, "books", bookId, "chat_sessions", sid, "messages"),
-            orderBy("timestamp")
-          )
-        );
-        existingMessages = msgsSnap.docs.map((d) => ({
-          id: d.id,
-          role: d.data().role as "user" | "assistant",
-          content: d.data().content as string,
-          citations: (d.data().citations ?? []) as HighlightCitation[],
-          feedback: d.data().feedback ?? null,
-          timestamp: (d.data().timestamp as Timestamp)?.toDate() ?? new Date(),
-        }));
-      } else {
-        const newSess = await addDoc(sessionsRef, { createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-        sid = newSess.id;
-      }
-
-      sessionIdRef.current = sid;
-      setSessionId(sid);
-
-      if (existingMessages.length > 0) {
-        setMessages(existingMessages);
-        setShowSuggested(false);
-      } else {
-        setMessages([{
-          id: "opening",
-          role: "assistant",
-          content: `Hey! I've read through all **${bookData.highlightCount}** of your highlights from **${bookData.title}**.\n\nBefore we dive in — what's going on in your life right now that made you want to revisit this book?`,
-          timestamp: new Date(),
-          feedback: null,
-        }]);
-      }
-
-      setLoadingBook(false);
-    });
-    return () => unsubAuth();
-  }, [bookId]);
-
   // ── Chat state ────────────────────────────────────────────
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -600,6 +533,128 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── Session Handling ─────────────────────────────────────
+  const loadSession = async (sid: string, currentSessions: ChatSession[], currentBook: BookData) => {
+    if (!uidRef.current) return;
+    setSessionId(sid);
+    sessionIdRef.current = sid;
+
+    const msgsSnap = await getDocs(
+      query(
+        collection(db, "users", uidRef.current, "books", bookId, "chat_sessions", sid, "messages"),
+        orderBy("timestamp")
+      )
+    );
+    const existingMessages = msgsSnap.docs.map((d) => ({
+      id: d.id,
+      role: d.data().role as "user" | "assistant",
+      content: d.data().content as string,
+      citations: (d.data().citations ?? []) as HighlightCitation[],
+      feedback: d.data().feedback ?? null,
+      timestamp: (d.data().timestamp as Timestamp)?.toDate() ?? new Date(),
+    }));
+
+    const sessionObj = currentSessions.find((s) => s.id === sid);
+    setSavedSituations(sessionObj?.savedSituations || []);
+
+    if (existingMessages.length > 0) {
+      setMessages(existingMessages);
+      setShowSuggested(false);
+    } else {
+      setMessages([{
+        id: "opening",
+        role: "assistant",
+        content: `Hey! I've read through all **${currentBook.highlightCount}** of your highlights from **${currentBook.title}**.\n\nBefore we dive in — what's going on in your life right now that made you want to revisit this book?`,
+        timestamp: new Date(),
+        feedback: null,
+      }]);
+      setShowSuggested(true);
+    }
+    // ensure scroll goes to bottom when loading
+    setUserScrolledUp(false);
+  };
+
+  const createNewSession = async () => {
+    if (!uidRef.current || !book) return;
+    const newSess = await addDoc(collection(db, "users", uidRef.current, "books", bookId, "chat_sessions"), { 
+      createdAt: serverTimestamp(), 
+      updatedAt: serverTimestamp(),
+      savedSituations: []
+    });
+    const sid = newSess.id;
+    const newSessionState = { id: sid, updatedAt: new Date(), savedSituations: [] };
+    
+    setSessions(prev => [newSessionState, ...prev]);
+    setSessionId(sid);
+    sessionIdRef.current = sid;
+    
+    setSavedSituations([]);
+    setMessages([{
+      id: "opening",
+      role: "assistant",
+      content: `Hey! I've read through all **${book.highlightCount}** of your highlights from **${book.title}**.\n\nBefore we dive in — what's going on in your life right now that made you want to revisit this book?`,
+      timestamp: new Date(),
+      feedback: null,
+    }]);
+    setShowSuggested(true);
+    setUserScrolledUp(false);
+  };
+
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (!user || !bookId) return;
+
+      uidRef.current = user.uid;
+      setUid(user.uid);
+
+      // 1. Load book
+      const bookSnap = await getDoc(doc(db, "users", user.uid, "books", bookId));
+      if (!bookSnap.exists()) { setLoadingBook(false); return; }
+      const bookData = { id: bookSnap.id, ...(bookSnap.data() as Omit<BookData, "id">) };
+      setBook(bookData);
+
+      // 2. Load all highlights
+      const hSnap = await getDocs(
+        query(collection(db, "users", user.uid, "books", bookId, "highlights"), orderBy("position"))
+      );
+      setHighlights(
+        hSnap.docs.map((d) => ({
+          id: d.id,
+          text: d.data().content as string,
+          page: d.data().pageRef ? `p.${d.data().pageRef}` : "",
+        }))
+      );
+
+      // 3. Load ALL chat sessions
+      const sessionsRef = collection(db, "users", user.uid, "books", bookId, "chat_sessions");
+      const sessionsSnap = await getDocs(
+        query(sessionsRef, orderBy("updatedAt", "desc"))
+      );
+
+      let loadedSessions: ChatSession[] = sessionsSnap.docs.map(d => ({
+        id: d.id,
+        updatedAt: (d.data().updatedAt as Timestamp)?.toDate() ?? new Date(),
+        savedSituations: d.data().savedSituations ?? []
+      }));
+
+      // Find or create the active session
+      if (loadedSessions.length > 0) {
+        setSessions(loadedSessions);
+        await loadSession(loadedSessions[0].id, loadedSessions, bookData);
+      } else {
+        const newSess = await addDoc(sessionsRef, { createdAt: serverTimestamp(), updatedAt: serverTimestamp(), savedSituations: [] });
+        const sid = newSess.id;
+        const initSession: ChatSession = { id: sid, updatedAt: new Date(), savedSituations: [] };
+        setSessions([initSession]);
+        await loadSession(sid, [initSession], bookData);
+      }
+
+      setLoadingBook(false);
+    });
+    return () => unsubAuth();
+  }, [bookId]);
+
 
   // ── Auto-scroll: scroll to bottom on new messages, but only if user hasn't scrolled up ──
   useEffect(() => {
@@ -748,12 +803,38 @@ export default function ChatPage() {
     setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, feedback } : m)));
     // Persist to Firestore  
     const sid = sessionIdRef.current;
-    const uid = uidRef.current;
-    if (sid && uid) {
+    if (sid && uidRef.current) {
       updateDoc(
-        doc(db, "users", uid, "books", bookId, "chat_sessions", sid, "messages", id),
+        doc(db, "users", uidRef.current, "books", bookId, "chat_sessions", sid, "messages", id),
         { feedback }
       ).catch(console.error);
+    }
+  };
+
+  const handleSaveSituation = async () => {
+    if (!situation.trim() || !uidRef.current) return;
+    const newSaved = [...savedSituations, situation.trim()];
+    setSavedSituations(newSaved);
+    setSituation("");
+    
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, savedSituations: newSaved } : s));
+    if (sessionId) {
+      updateDoc(doc(db, "users", uidRef.current, "books", bookId, "chat_sessions", sessionId), {
+        savedSituations: newSaved,
+      }).catch(console.error);
+    }
+  };
+
+  const handleDeleteSituation = async (idx: number) => {
+    if (!uidRef.current) return;
+    const newSaved = savedSituations.filter((_, i) => i !== idx);
+    setSavedSituations(newSaved);
+    
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, savedSituations: newSaved } : s));
+    if (sessionId) {
+      updateDoc(doc(db, "users", uidRef.current, "books", bookId, "chat_sessions", sessionId), {
+        savedSituations: newSaved,
+      }).catch(console.error);
     }
   };
 
@@ -782,14 +863,83 @@ export default function ChatPage() {
     );
   }
 
+  const sidebarContent = (
+    <>
+      <div className="p-7 border-b border-black/10">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-2 text-[10px] font-bold text-gray-400 hover:text-black uppercase tracking-[0.15em] transition-colors mb-7"
+        >
+          <ArrowLeft className="w-3 h-3" /> Back to Library
+        </Link>
+        <div className="space-y-2">
+          <h3 className="font-bold font-typewriter text-2xl text-black leading-tight pr-10">
+            {book.title}
+          </h3>
+          <p className="text-sm text-gray-400 font-medium">{book.author}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mt-6">
+          <span className="bg-black/5 text-gray-600 text-[10px] uppercase font-bold tracking-widest px-3 py-1.5 rounded-md capitalize">
+            {book.category}
+          </span>
+          <span className="bg-black/5 text-gray-600 text-[10px] uppercase font-bold tracking-widest px-3 py-1.5 rounded-md">
+            {book.highlightCount} highlights
+          </span>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-6">
+          Highlights
+        </p>
+        <div className="space-y-4">
+          {highlights.map((h) => {
+            const isHovered = hoveredCitationId === h.id;
+            return (
+              <motion.div
+                key={h.id}
+                animate={{
+                  backgroundColor: isHovered ? "#FEF3C7" : "transparent",
+                  borderLeftColor: isHovered ? "#FBBF24" : "#d1d5db",
+                  scale: isHovered ? 1.01 : 1,
+                }}
+                className="text-sm text-gray-600 italic leading-relaxed border-l-2 pl-3 py-1.5 cursor-default transition-colors"
+              >
+                &ldquo;{h.text}&rdquo;{" "}
+                <span className="not-italic text-gray-400 font-mono text-xs ml-1">{h.page}</span>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="p-6 border-t border-black/10">
+        <button
+          onClick={() => {
+            setMessages([{
+                id: "0",
+                role: "assistant",
+                content: `Hey! I've read through all **${book.highlightCount}** of your highlights from **${book.title}**.\n\nBefore we dive in — what's going on in your life right now that made you want to revisit this book?`,
+                timestamp: new Date(),
+                feedback: null,
+            }]);
+            setShowSuggested(true);
+          }}
+          className="group w-full bg-white border border-black/10 hover:border-black text-[11px] font-bold uppercase tracking-widest py-3 rounded-full flex items-center justify-center gap-2.5 transition-all shadow-sm hover:shadow-md"
+        >
+          <RotateCcw className="w-3.5 h-3.5 text-gray-400 group-hover:text-black transition-colors" />
+          <span>Reset Chat</span>
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div className="flex h-[calc(100dvh-73px)] overflow-hidden bg-white">
-      {/* ─── Column 1: Highlights Sidebar ─────────────── */}
+      {/* ─── Column 1: Highlights Sidebar (Desktop) ─────────────── */}
       <motion.div
         initial={false}
         animate={{ width: leftCollapsed ? 52 : 280 }}
         transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
-        className="flex-shrink-0 border-r border-black/10 flex flex-col bg-[#FAFAFA] overflow-hidden relative"
+        className="hidden md:flex flex-shrink-0 border-r border-black/10 flex-col bg-[#FAFAFA] overflow-hidden relative"
       >
         {/* Collapse Trigger - Left */}
         <button
@@ -809,77 +959,7 @@ export default function ChatPage() {
               transition={{ duration: 0.2 }}
               className="flex flex-col h-full"
             >
-              {/* Back + Book info */}
-              <div className="p-7 border-b border-black/10">
-                <Link
-                  href="/dashboard"
-                  className="inline-flex items-center gap-2 text-[10px] font-bold text-gray-400 hover:text-black uppercase tracking-[0.15em] transition-colors mb-7"
-                >
-                  <ArrowLeft className="w-3 h-3" /> Back to Library
-                </Link>
-
-                <div className="space-y-2">
-                  <h3 className="font-bold font-typewriter text-2xl text-black leading-tight pr-10">
-                    {book.title}
-                  </h3>
-                  <p className="text-sm text-gray-400 font-medium">{book.author}</p>
-                </div>
-                
-                <div className="flex flex-wrap items-center gap-2 mt-6">
-                  <span className="bg-black/5 text-gray-600 text-[10px] uppercase font-bold tracking-widest px-3 py-1.5 rounded-md capitalize">
-                    {book.category}
-                  </span>
-                  <span className="bg-black/5 text-gray-600 text-[10px] uppercase font-bold tracking-widest px-3 py-1.5 rounded-md">
-                    {book.highlightCount} highlights
-                  </span>
-                </div>
-              </div>
-
-              {/* Highlights list */}
-              <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-6">
-                  Highlights
-                </p>
-                <div className="space-y-4">
-                  {highlights.map((h) => {
-                    const isHovered = hoveredCitationId === h.id;
-                    return (
-                      <motion.div
-                        key={h.id}
-                        animate={{
-                          backgroundColor: isHovered ? "#FEF3C7" : "transparent",
-                          borderLeftColor: isHovered ? "#FBBF24" : "#d1d5db",
-                          scale: isHovered ? 1.01 : 1,
-                        }}
-                        className="text-sm text-gray-600 italic leading-relaxed border-l-2 pl-3 py-1.5 cursor-default transition-colors"
-                      >
-                        &ldquo;{h.text}&rdquo;{" "}
-                        <span className="not-italic text-gray-400 font-mono text-xs ml-1">{h.page}</span>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Reset */}
-              <div className="p-6 border-t border-black/10">
-                <button
-                  onClick={() => {
-                    setMessages([{
-                        id: "0",
-                        role: "assistant",
-                        content: `Hey! I've read through all **${book.highlightCount}** of your highlights from **${book.title}**.\n\nBefore we dive in — what's going on in your life right now that made you want to revisit this book?`,
-                        timestamp: new Date(),
-                        feedback: null,
-                    }]);
-                    setShowSuggested(true);
-                  }}
-                  className="group w-full bg-white border border-black/10 hover:border-black text-[11px] font-bold uppercase tracking-widest py-3 rounded-full flex items-center justify-center gap-2.5 transition-all shadow-sm hover:shadow-md"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-gray-400 group-hover:text-black transition-colors" />
-                  <span>Reset Chat</span>
-                </button>
-              </div>
+              {sidebarContent}
             </motion.div>
           )}
         </AnimatePresence>
@@ -905,8 +985,51 @@ export default function ChatPage() {
         book={book}
       />
 
-      <div className="w-[420px] flex-shrink-0 flex flex-col bg-white overflow-hidden relative border-l border-black/10">
+      <div className="flex-1 md:w-[420px] md:flex-shrink-0 flex flex-col bg-white overflow-hidden relative border-l border-black/10">
         <div className="flex flex-col h-full">
+
+              {/* Chat Header for Sessions */}
+              <div className="flex items-center justify-between px-5 py-3 border-b border-black/10 bg-white flex-shrink-0 z-10 w-full">
+                <div className="flex items-center gap-2">
+                  {/* Mobile Sidebar Trigger */}
+                  <div className="md:hidden">
+                    <Sheet>
+                      <SheetTrigger className="p-1.5 rounded-lg hover:bg-black/5 text-gray-600 transition-colors outline-none focus:outline-none flex items-center justify-center">
+                        <Menu className="w-4 h-4" />
+                      </SheetTrigger>
+                      <SheetContent side="left" className="p-0 w-[280px] bg-[#FAFAFA] border-r-0 flex flex-col">
+                        {sidebarContent}
+                      </SheetContent>
+                    </Sheet>
+                  </div>
+                  <span className="text-[12px] font-bold text-gray-800 uppercase tracking-widest hidden sm:inline-block">Sessions</span>
+                </div>
+                <div className="flex gap-2 items-center">
+                  {sessions.length > 0 && (
+                     <select
+                       className="text-[11px] font-mono font-medium bg-gray-100 hover:bg-gray-200 border-none transition-colors rounded-lg px-2 py-1 outline-none text-gray-700 cursor-pointer max-w-[130px]"
+                       value={sessionId || ""}
+                       onChange={(e) => {
+                         if (!book) return;
+                         loadSession(e.target.value, sessions, book);
+                       }}
+                     >
+                       {sessions.map(s => (
+                         <option key={s.id} value={s.id}>
+                           {new Date(s.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - {new Date(s.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' })}
+                         </option>
+                       ))}
+                     </select>
+                  )}
+                  <button
+                    onClick={createNewSession}
+                    title="Start new chat session"
+                    className="p-1.5 rounded-lg bg-black text-white hover:bg-gray-800 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
 
               {/* Messages */}
               <div
@@ -976,12 +1099,7 @@ export default function ChatPage() {
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Your Context (Optional)</span>
                             <button 
-                              onClick={() => {
-                                if (situation.trim()) {
-                                  setSavedSituations([...savedSituations, situation.trim()]);
-                                  setSituation("");
-                                }
-                              }}
+                              onClick={handleSaveSituation}
                               disabled={!situation.trim()}
                               className="text-[10px] bg-white text-black px-2 py-0.5 rounded font-bold uppercase tracking-widest hover:bg-yellow-400 transition-colors disabled:opacity-30"
                             >
@@ -1010,7 +1128,7 @@ export default function ChatPage() {
                                     {ctx}
                                   </div>
                                   <button 
-                                    onClick={() => setSavedSituations(savedSituations.filter((_, i) => i !== idx))}
+                                    onClick={() => handleDeleteSituation(idx)}
                                     className="opacity-0 group-hover:opacity-100 p-1 text-gray-500 hover:text-red-400 transition-all"
                                   >
                                     <Trash2 className="w-3 h-3" />
