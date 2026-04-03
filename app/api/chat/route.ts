@@ -64,7 +64,7 @@ export async function POST(request: Request) {
         content: d.data().content as string,
         pageRef: d.data().pageRef as string | undefined,
       }))
-      .filter((h) => Boolean(h.content));
+      .filter((h: HighlightDoc) => Boolean(h.content));
 
     usedVectorSearch = retrievedDocs.length > 0;
   } catch (vecErr) {
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
       .limit(200)
       .get();
 
-    const allDocs: HighlightDoc[] = hSnap.docs.map((d) => ({
+    const allDocs: HighlightDoc[] = hSnap.docs.map((d: any) => ({
       id: d.id,
       content: d.data().content as string,
       pageRef: d.data().pageRef as string | undefined,
